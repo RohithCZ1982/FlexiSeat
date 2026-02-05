@@ -1,6 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppView, TeamMember, Booking } from '../types';
+import { db } from '../firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
 
 interface AssignTeamProps {
   onViewChange: (view: AppView) => void;
@@ -11,7 +13,21 @@ interface AssignTeamProps {
 const AssignTeam: React.FC<AssignTeamProps> = ({ onViewChange, selectedDesks, onConfirm }) => {
   const [assignments, setAssignments] = useState<Record<string, string>>({});
 
-  const team: TeamMember[] = [];
+  const [team, setTeam] = useState<TeamMember[]>([]);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, "users"), (snapshot) => {
+      const fetchedUsers = snapshot.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data().name || 'Unknown',
+        role: doc.data().role || 'Member',
+        avatar: doc.data().avatar || `https://picsum.photos/seed/${doc.id}/100/100`,
+        ...doc.data()
+      })) as TeamMember[];
+      setTeam(fetchedUsers);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleAssign = (deskId: string, memberId: string) => {
     setAssignments(prev => ({ ...prev, [deskId]: memberId }));

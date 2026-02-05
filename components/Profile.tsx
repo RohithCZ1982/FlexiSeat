@@ -59,6 +59,27 @@ const Profile: React.FC<ProfileProps> = ({ onViewChange, user, onLogout }) => {
           </div>
         </section>
 
+        {(user?.role === 'Team Lead' || user?.role === 'Admin') && (
+          <section className="px-4 py-2">
+            <h3 className="text-slate-400 text-[10px] font-bold uppercase tracking-widest px-2 mb-3">Admin Panel</h3>
+            <button
+              onClick={() => onViewChange(AppView.ADMIN_USERS)}
+              className="w-full flex items-center justify-between p-4 bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-50 dark:border-slate-800 active:scale-[0.98] transition-all"
+            >
+              <div className="flex items-center gap-4">
+                <div className="size-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-600">
+                  <span className="material-symbols-outlined">shield_person</span>
+                </div>
+                <div className="text-left">
+                  <p className="text-slate-900 dark:text-white text-base font-bold">Manage Users</p>
+                  <p className="text-slate-400 text-[10px] font-medium">Roles & Permissions</p>
+                </div>
+              </div>
+              <span className="material-symbols-outlined text-slate-300">chevron_right</span>
+            </button>
+          </section>
+        )}
+
         <section className="px-4 py-2">
           <h3 className="text-slate-400 text-[10px] font-bold uppercase tracking-widest px-2 mb-3">App Preferences</h3>
           <div className="space-y-2">
@@ -92,7 +113,7 @@ const Profile: React.FC<ProfileProps> = ({ onViewChange, user, onLogout }) => {
         </section>
 
         <div className="px-6 py-10">
-          <button 
+          <button
             onClick={onLogout}
             className="w-full h-14 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 font-extrabold flex items-center justify-center gap-3 active:scale-95 transition-transform"
           >

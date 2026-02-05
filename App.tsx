@@ -9,9 +9,10 @@ import Profile from './components/Profile';
 import TeamBookings from './components/TeamBookings';
 import Confirmation from './components/Confirmation';
 import Login from './components/Login';
+import AdminUsers from './components/AdminUsers';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -32,7 +33,33 @@ const App: React.FC = () => {
           role: 'Team Lead',
           avatar: `https://picsum.photos/seed/${firebaseUser.uid}/300/300`,
         };
-        setUser(appUser);
+
+        // Sync User to Firestore (so they appear in the team list)
+        // Sync User to Firestore (so they appear in the team list)
+        const userRef = doc(db, "users", firebaseUser.uid);
+
+        // Check if user exists to get their REAL role (don't overwrite 'Team Lead' every time)
+        getDoc(userRef).then((docSnap) => {
+          if (firebaseUser.email === 'admin@office.com') {
+            appUser.role = 'Admin'; // HARDCODED Admin
+          } else if (docSnap.exists()) {
+            const data = docSnap.data();
+            appUser.role = data.role || 'Member'; // Use existing role or default
+          } else {
+            appUser.role = 'Member'; // Default new users to Member
+          }
+
+          setDoc(userRef, {
+            id: firebaseUser.uid,
+            name: appUser.name,
+            email: appUser.email,
+            role: appUser.role, // Persist the role we just resolved
+            avatar: appUser.avatar,
+            lastLogin: serverTimestamp()
+          }, { merge: true });
+
+          setUser({ ...appUser }); // Update state with resolved role
+        });
         if (currentView === AppView.LOGIN) {
           setCurrentView(AppView.DASHBOARD);
         }
@@ -111,8 +138,8 @@ const App: React.FC = () => {
         return <Dashboard onViewChange={setCurrentView} user={user} bookings={bookings} />;
       case AppView.FLOOR_MAP:
         return (
-          <FloorMap 
-            onViewChange={setCurrentView} 
+          <FloorMap
+            onViewChange={setCurrentView}
             selectedDesks={selectedDesks}
             setSelectedDesks={setSelectedDesks}
             existingBookings={bookings}
@@ -120,20 +147,25 @@ const App: React.FC = () => {
         );
       case AppView.ASSIGN_TEAM:
         return (
-          <AssignTeam 
-            onViewChange={setCurrentView} 
+          <AssignTeam
+            onViewChange={setCurrentView}
             selectedDesks={selectedDesks}
             onConfirm={addBooking}
           />
         );
       case AppView.TEAM_BOOKINGS:
-        return <TeamBookings onViewChange={setCurrentView} bookings={bookings} />;
+        return <TeamBookings onViewChange={setCurrentView} bookings={bookings} user={user} />;
       case AppView.STATS:
-        return <Stats onViewChange={setCurrentView} bookings={bookings} />;
+        return <Stats onViewChange={setCurrentView} bookings={bookings} user={user} />;
       case AppView.PROFILE:
         return <Profile onViewChange={setCurrentView} user={user} onLogout={handleLogout} />;
       case AppView.CONFIRMATION:
         return <Confirmation onViewChange={setCurrentView} />;
+      case AppView.ADMIN_USERS:
+        if (user?.role === 'Team Lead' || user?.role === 'Admin') {
+          return <AdminUsers onViewChange={setCurrentView} />;
+        }
+        return <Dashboard onViewChange={setCurrentView} user={user} bookings={bookings} />;
       default:
         return <Dashboard onViewChange={setCurrentView} user={user} bookings={bookings} />;
     }

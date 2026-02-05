@@ -1,24 +1,31 @@
 
 import React, { useState } from 'react';
-import { AppView, Booking } from '../types';
+import { AppView, Booking, User } from '../types';
 import { TopAppBar, BottomNav } from './Layout';
 
 interface TeamBookingsProps {
   onViewChange: (view: AppView) => void;
   bookings: Booking[];
+  user: User | null;
 }
 
-const TeamBookings: React.FC<TeamBookingsProps> = ({ onViewChange, bookings }) => {
+const TeamBookings: React.FC<TeamBookingsProps> = ({ onViewChange, bookings, user }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
-  const filteredBookings = bookings.filter(b => 
+  const isMember = user?.role === 'Member';
+
+  const relevantBookings = isMember
+    ? bookings.filter(b => b.memberId === user?.id)
+    : bookings;
+
+  const filteredBookings = relevantBookings.filter(b =>
     b.memberName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     b.deskId.toLowerCase().includes(searchTerm.toLowerCase()) ||
     b.role.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getStatusStyle = (status: string) => {
-    switch(status) {
+    switch (status) {
       case 'Accepted': return 'bg-emerald-500/10 text-emerald-500';
       case 'Pending': return 'bg-orange-500/10 text-orange-500';
       case 'Rejected': return 'bg-red-500/10 text-red-500';
@@ -27,7 +34,7 @@ const TeamBookings: React.FC<TeamBookingsProps> = ({ onViewChange, bookings }) =
   };
 
   const getStatusIcon = (status: string) => {
-    switch(status) {
+    switch (status) {
       case 'Accepted': return 'check_circle';
       case 'Pending': return 'schedule';
       case 'Rejected': return 'cancel';
@@ -38,13 +45,13 @@ const TeamBookings: React.FC<TeamBookingsProps> = ({ onViewChange, bookings }) =
   return (
     <div className="flex flex-col flex-1">
       <TopAppBar title="Team History" leftIcon="chevron_left" onLeftClick={() => onViewChange(AppView.DASHBOARD)} rightIcon="notifications" />
-      
+
       <main className="flex-1 overflow-y-auto p-4 pb-32">
         <div className="mb-6">
           <div className="relative w-full">
             <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Search employee or desk..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}

@@ -7,7 +7,8 @@ export enum AppView {
   STATS = 'STATS',
   PROFILE = 'PROFILE',
   TEAM_BOOKINGS = 'TEAM_BOOKINGS',
-  CONFIRMATION = 'CONFIRMATION'
+  CONFIRMATION = 'CONFIRMATION',
+  ADMIN_USERS = 'ADMIN_USERS'
 }
 
 export interface User {
@@ -16,6 +17,7 @@ export interface User {
   email: string;
   role: string;
   avatar: string;
+  teamLeadId?: string; // Optional: ID of the Team Lead assigned to this user
 }
 
 export interface TeamMember {
@@ -23,6 +25,7 @@ export interface TeamMember {
   name: string;
   role: string;
   avatar: string;
+  teamLeadId?: string;
 }
 
 export interface Booking {
