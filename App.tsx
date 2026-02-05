@@ -10,9 +10,7 @@ import TeamBookings from './components/TeamBookings';
 import Confirmation from './components/Confirmation';
 import Login from './components/Login';
 import AdminUsers from './components/AdminUsers';
-import { auth, db } from './firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
+
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -20,103 +18,92 @@ const App: React.FC = () => {
   const [selectedDesks, setSelectedDesks] = useState<string[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bookingDates, setBookingDates] = useState<Date[]>([]);
 
-  // 1. Listen for Auth State Changes
+  // 1. Listen for Auth State Changes - REMOVED for Local implementation
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        // Map Firebase User to our App User type
-        const appUser: User = {
-          id: firebaseUser.uid,
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Team Lead',
-          email: firebaseUser.email || '',
-          role: 'Team Lead',
-          avatar: `https://picsum.photos/seed/${firebaseUser.uid}/300/300`,
-        };
-
-        // Sync User to Firestore (so they appear in the team list)
-        // Sync User to Firestore (so they appear in the team list)
-        const userRef = doc(db, "users", firebaseUser.uid);
-
-        // Check if user exists to get their REAL role (don't overwrite 'Team Lead' every time)
-        getDoc(userRef).then((docSnap) => {
-          if (firebaseUser.email === 'admin@office.com') {
-            appUser.role = 'Admin'; // HARDCODED Admin
-          } else if (docSnap.exists()) {
-            const data = docSnap.data();
-            appUser.role = data.role || 'Member'; // Use existing role or default
-          } else {
-            appUser.role = 'Member'; // Default new users to Member
-          }
-
-          setDoc(userRef, {
-            id: firebaseUser.uid,
-            name: appUser.name,
-            email: appUser.email,
-            role: appUser.role, // Persist the role we just resolved
-            avatar: appUser.avatar,
-            lastLogin: serverTimestamp()
-          }, { merge: true });
-
-          setUser({ ...appUser }); // Update state with resolved role
-        });
-        if (currentView === AppView.LOGIN) {
-          setCurrentView(AppView.DASHBOARD);
-        }
-      } else {
-        setUser(null);
-        setCurrentView(AppView.LOGIN);
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    // Check local storage or session if we implemented persistence.
+    // For now simple session state.
+    setLoading(false);
   }, []);
 
-  // 2. Listen for Real-time Firestore Updates
+  // 2. Fetch bookings when user logs in
   useEffect(() => {
     if (!user) return;
-
-    const q = query(collection(db, "bookings"), orderBy("timestamp", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedBookings: Booking[] = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Booking[];
-      setBookings(fetchedBookings);
-    });
-
-    return () => unsubscribe();
+    fetchBookings();
   }, [user]);
 
-  const handleLogin = (userData: User) => {
-    // User state is handled by onAuthStateChanged listener
-  };
-
-  const handleLogout = async () => {
+  const fetchBookings = async () => {
+    if (!user) return;
     try {
-      await signOut(auth);
+      const res = await fetch('http://localhost:5001/api/bookings');
+      if (res.ok) {
+        const data = await res.json();
+        setBookings(data);
+      }
     } catch (error) {
-      console.error("Logout failed:", error);
+      console.error("Error fetching bookings:", error);
     }
   };
 
-  const addBooking = async (newBookings: Booking[]) => {
+  const handleLogin = (userData: User) => {
+    setUser(userData);
+    setCurrentView(AppView.DASHBOARD);
+  };
+
+  const handleLogout = async () => {
+    setUser(null);
+    setCurrentView(AppView.LOGIN);
+  };
+
+  const addBooking = async (newBookings: Booking[], selectedDates?: Date[]) => {
     try {
       setLoading(true);
-      for (const booking of newBookings) {
-        // We omit the ID from the object because Firestore generates its own
-        const { id: _, ...bookingData } = booking;
-        await addDoc(collection(db, "bookings"), {
-          ...bookingData,
-          timestamp: serverTimestamp()
-        });
+
+      if (!selectedDates || selectedDates.length === 0) {
+        alert('Please select at least one date for the booking.');
+        setLoading(false);
+        return;
       }
+
+      // Create a booking for each desk and each selected date
+      const bookingPromises = [];
+      for (const booking of newBookings) {
+        for (const date of selectedDates) {
+          bookingPromises.push(
+            fetch('http://localhost:5001/api/bookings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                memberId: booking.memberId,
+                memberName: booking.memberName,
+                memberAvatar: booking.memberAvatar,
+                role: booking.role,
+                deskId: booking.deskId,
+                zone: booking.zone,
+                level: booking.level,
+                status: 'Pending',
+                bookingDate: date.toISOString().split('T')[0] // Format as YYYY-MM-DD
+              })
+            })
+          );
+        }
+      }
+
+      await Promise.all(bookingPromises);
+
+      if (selectedDates) {
+        setBookingDates(selectedDates);
+      }
+
       setSelectedDesks([]);
       setCurrentView(AppView.CONFIRMATION);
+
+      // Refresh bookings list
+      fetchBookings();
     } catch (error) {
       console.error("Error saving bookings:", error);
-      alert("Failed to save bookings to cloud.");
+      alert("Failed to save bookings. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -135,7 +122,7 @@ const App: React.FC = () => {
       case AppView.LOGIN:
         return <Login onLogin={handleLogin} />;
       case AppView.DASHBOARD:
-        return <Dashboard onViewChange={setCurrentView} user={user} bookings={bookings} />;
+        return <Dashboard onViewChange={setCurrentView} user={user} bookings={bookings} onRefreshBookings={fetchBookings} />;
       case AppView.FLOOR_MAP:
         return (
           <FloorMap
@@ -151,6 +138,7 @@ const App: React.FC = () => {
             onViewChange={setCurrentView}
             selectedDesks={selectedDesks}
             onConfirm={addBooking}
+            user={user}
           />
         );
       case AppView.TEAM_BOOKINGS:
@@ -160,7 +148,7 @@ const App: React.FC = () => {
       case AppView.PROFILE:
         return <Profile onViewChange={setCurrentView} user={user} onLogout={handleLogout} />;
       case AppView.CONFIRMATION:
-        return <Confirmation onViewChange={setCurrentView} />;
+        return <Confirmation onViewChange={setCurrentView} bookingDates={bookingDates} />;
       case AppView.ADMIN_USERS:
         if (user?.role === 'Team Lead' || user?.role === 'Admin') {
           return <AdminUsers onViewChange={setCurrentView} />;

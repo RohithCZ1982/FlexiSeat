@@ -4,14 +4,32 @@ import { AppView } from '../types';
 
 interface ConfirmationProps {
   onViewChange: (view: AppView) => void;
+  bookingDates?: Date[];
 }
 
-const Confirmation: React.FC<ConfirmationProps> = ({ onViewChange }) => {
+const Confirmation: React.FC<ConfirmationProps> = ({ onViewChange, bookingDates = [] }) => {
   const [showConfetti, setShowConfetti] = useState(false);
 
   useEffect(() => {
     setShowConfetti(true);
   }, []);
+
+  const formatDateRange = () => {
+    if (!bookingDates || bookingDates.length === 0) {
+      return 'No dates selected';
+    }
+
+    const sortedDates = [...bookingDates].sort((a, b) => a.getTime() - b.getTime());
+
+    if (sortedDates.length === 1) {
+      return sortedDates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    const firstDate = sortedDates[0];
+    const lastDate = sortedDates[sortedDates.length - 1];
+
+    return `${firstDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${lastDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  };
 
   return (
     <div className="flex flex-col flex-1 h-screen bg-white dark:bg-slate-900">
@@ -28,7 +46,7 @@ const Confirmation: React.FC<ConfirmationProps> = ({ onViewChange }) => {
         {showConfetti && (
           <div className="absolute inset-0 pointer-events-none">
             {[...Array(12)].map((_, i) => (
-              <div 
+              <div
                 key={i}
                 className={`absolute w-2 h-2 rounded-sm animate-bounce`}
                 style={{
@@ -64,19 +82,22 @@ const Confirmation: React.FC<ConfirmationProps> = ({ onViewChange }) => {
           </div>
           <div className="flex-1 text-left">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Booking Period</p>
-            <p className="text-sm font-extrabold text-slate-900 dark:text-white mt-1">Oct 24 - Oct 28, 2023</p>
+            <p className="text-sm font-extrabold text-slate-900 dark:text-white mt-1">{formatDateRange()}</p>
+            {bookingDates && bookingDates.length > 1 && (
+              <p className="text-xs text-slate-500 mt-1">{bookingDates.length} days selected</p>
+            )}
           </div>
         </div>
       </div>
 
       <div className="flex flex-col gap-4 px-8 py-10">
-        <button 
+        <button
           onClick={() => onViewChange(AppView.DASHBOARD)}
           className="flex w-full items-center justify-center rounded-2xl h-16 bg-primary text-white text-lg font-black shadow-2xl shadow-primary/30 active:scale-95 transition-transform"
         >
           Back to Dashboard
         </button>
-        <button 
+        <button
           onClick={() => onViewChange(AppView.TEAM_BOOKINGS)}
           className="flex w-full items-center justify-center h-12 bg-transparent text-primary text-base font-extrabold hover:underline"
         >

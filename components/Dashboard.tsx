@@ -1,45 +1,106 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { AppView, User, Booking } from '../types';
 import { TopAppBar, BottomNav } from './Layout';
-import { db } from '../firebase';
-import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
+
 
 interface DashboardProps {
   onViewChange: (view: AppView) => void;
   user: User | null;
   bookings: Booking[];
+  onRefreshBookings?: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onViewChange, user, bookings }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onViewChange, user, bookings, onRefreshBookings }) => {
+  const [showRevokeModal, setShowRevokeModal] = useState(false);
+  const [revokeBookingId, setRevokeBookingId] = useState<string | null>(null);
+  const [revokeReason, setRevokeReason] = useState('');
+  const [activeTab, setActiveTab] = useState<'own' | 'team'>('own'); // Default to own view for leads
   const activeBookings = bookings.filter(b => b.status === 'Accepted');
   const isMember = user?.role === 'Member';
+  const isTeamLead = user?.role === 'Team Lead';
 
   // For Leads/Admins: Show PENDING requests to approve
   // For Members: Show ALL their own requests (history/status)
+  // For Team Leads with tabs: Filter based on active tab
   const displayedBookings = isMember
     ? bookings.filter(b => b.memberId === user?.id)
-    : bookings.filter(b => b.status === 'Pending');
+    : isTeamLead
+      ? activeTab === 'own'
+        ? bookings.filter(b => b.memberId === user?.id)
+        : bookings.filter(b => b.status === 'Pending' && b.memberId !== user?.id)
+      : bookings.filter(b => b.status === 'Pending');
 
   const totalSpots = 24; // Expanded for a "real" floor feel
   const occupancyRate = Math.min(100, Math.round((activeBookings.length / totalSpots) * 100));
 
   const handleAction = async (id: string, action: 'Accept' | 'Reject') => {
     try {
-      const bookingRef = doc(db, 'bookings', id);
       if (action === 'Accept') {
-        await updateDoc(bookingRef, { status: 'Accepted' });
+        // Update booking status to Accepted
+        const res = await fetch(`http://localhost:5001/api/bookings/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'Accepted' })
+        });
+
+        if (res.ok) {
+          onRefreshBookings?.();
+        } else {
+          alert('Failed to accept booking.');
+        }
       } else {
-        await deleteDoc(bookingRef);
+        // Delete the booking
+        const res = await fetch(`http://localhost:5001/api/bookings/${id}`, {
+          method: 'DELETE'
+        });
+
+        if (res.ok) {
+          onRefreshBookings?.();
+        } else {
+          alert('Failed to reject booking.');
+        }
       }
     } catch (error) {
       console.error("Action failed:", error);
+      alert('An error occurred. Please try again.');
+    }
+  };
+
+  const initiateRevoke = (id: string) => {
+    setRevokeBookingId(id);
+    setShowRevokeModal(true);
+  };
+
+  const executeRevoke = async () => {
+    if (!revokeBookingId || !revokeReason.trim()) {
+      alert('Please provide a reason for revoking.');
+      return;
+    }
+
+    try {
+      // Delete the booking (or you could update status to 'Revoked' if you want to keep history)
+      const res = await fetch(`http://localhost:5001/api/bookings/${revokeBookingId}`, {
+        method: 'DELETE'
+      });
+
+      if (res.ok) {
+        setShowRevokeModal(false);
+        setRevokeBookingId(null);
+        setRevokeReason('');
+        onRefreshBookings?.();
+      } else {
+        alert('Failed to revoke booking.');
+      }
+    } catch (error) {
+      console.error("Revoke failed:", error);
+      alert('An error occurred. Please try again.');
     }
   };
 
   return (
     <div className="flex flex-col flex-1 animate-in fade-in duration-500">
-      <TopAppBar title="Lead Dashboard" onRightClick={() => onViewChange(AppView.PROFILE)} />
+      <TopAppBar title="FlexiSeat" onRightClick={() => onViewChange(AppView.PROFILE)} />
 
       <main className="flex flex-col gap-6 p-5 pb-32 overflow-y-auto">
         <section className="mt-2">
@@ -108,6 +169,30 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewChange, user, bookings }) =
             <button onClick={() => onViewChange(AppView.TEAM_BOOKINGS)} className="text-primary text-xs font-bold hover:underline">View History</button>
           </div>
 
+          {/* Tabs for Team Leads */}
+          {isTeamLead && (
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setActiveTab('own')}
+                className={`flex-1 h-10 rounded-xl font-bold text-sm transition-all ${activeTab === 'own'
+                  ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+              >
+                My Requests
+              </button>
+              <button
+                onClick={() => setActiveTab('team')}
+                className={`flex-1 h-10 rounded-xl font-bold text-sm transition-all ${activeTab === 'team'
+                  ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+              >
+                Team Requests
+              </button>
+            </div>
+          )}
+
           <div className="flex flex-col gap-3">
             {displayedBookings.length > 0 ? (
               displayedBookings.map((req) => (
@@ -124,22 +209,31 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewChange, user, bookings }) =
                     <p className="text-slate-900 dark:text-white font-black text-sm truncate">{req.memberName}</p>
                     <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-tighter">Desk {req.deskId} • Level {req.level}</p>
                   </div>
-                  {/* Action Buttons (Only for Non-Members) */}
+                  {/* Action Buttons */}
                   {!isMember ? (
-                    <div className="flex gap-2">
+                    req.status === 'Pending' ? (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleAction(req.id, 'Reject')}
+                          className="size-9 rounded-xl border border-slate-100 dark:border-slate-800 text-slate-400 hover:text-danger hover:bg-danger/10 flex items-center justify-center transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-xl">close</span>
+                        </button>
+                        <button
+                          onClick={() => handleAction(req.id, 'Accept')}
+                          className="size-9 rounded-xl bg-success text-white shadow-lg shadow-success/20 flex items-center justify-center active:scale-90 transition-all"
+                        >
+                          <span className="material-symbols-outlined text-xl">check</span>
+                        </button>
+                      </div>
+                    ) : req.status === 'Accepted' ? (
                       <button
-                        onClick={() => handleAction(req.id, 'Reject')}
-                        className="size-9 rounded-xl border border-slate-100 dark:border-slate-800 text-slate-400 hover:text-danger hover:bg-danger/10 flex items-center justify-center transition-colors"
+                        onClick={() => initiateRevoke(req.id)}
+                        className="px-3 py-1.5 rounded-xl bg-red-50 text-red-600 text-xs font-bold hover:bg-red-100 transition-colors"
                       >
-                        <span className="material-symbols-outlined text-xl">close</span>
+                        Revoke
                       </button>
-                      <button
-                        onClick={() => handleAction(req.id, 'Accept')}
-                        className="size-9 rounded-xl bg-success text-white shadow-lg shadow-success/20 flex items-center justify-center active:scale-90 transition-all"
-                      >
-                        <span className="material-symbols-outlined text-xl">check</span>
-                      </button>
-                    </div>
+                    ) : null
                   ) : (
                     <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${req.status === 'Accepted' ? 'bg-emerald-100 text-emerald-600' : req.status === 'Pending' ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-600'}`}>
                       {req.status}
@@ -156,6 +250,50 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewChange, user, bookings }) =
           </div>
         </section>
       </main>
+
+      {/* Revoke Modal */}
+      {showRevokeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[2rem] p-6 shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center text-center mb-6">
+              <div className="size-16 rounded-full bg-red-100 text-red-500 flex items-center justify-center mb-4">
+                <span className="material-symbols-outlined text-3xl">block</span>
+              </div>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">Revoke Booking?</h3>
+              <p className="text-slate-500 font-medium text-sm">
+                Please provide a reason for revoking this booking.
+              </p>
+            </div>
+
+            <div className="mb-6">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Reason</label>
+              <textarea
+                value={revokeReason}
+                onChange={(e) => setRevokeReason(e.target.value)}
+                className="w-full h-24 mt-1 px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl border-none focus:ring-2 focus:ring-primary font-medium dark:text-white resize-none"
+                placeholder="e.g., Desk maintenance required..."
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowRevokeModal(false); setRevokeBookingId(null); setRevokeReason(''); }}
+                className="flex-1 h-12 rounded-xl border border-slate-200 dark:border-slate-800 font-bold text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeRevoke}
+                disabled={!revokeReason.trim()}
+                className="flex-1 h-12 rounded-xl bg-red-500 text-white font-bold shadow-lg shadow-red-500/20 hover:bg-red-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Revoke Booking
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <BottomNav currentView={AppView.DASHBOARD} onViewChange={onViewChange} />
     </div>

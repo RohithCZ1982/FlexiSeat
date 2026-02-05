@@ -1,8 +1,6 @@
 
 import React, { useState } from 'react';
 import { User } from '../types';
-import { auth } from '../firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -20,27 +18,22 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setLoading(true);
 
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const firebaseUser = userCredential.user;
-      
-      const appUser: User = {
-        id: firebaseUser.uid,
-        name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Team Lead',
-        email: firebaseUser.email || '',
-        role: 'Team Lead',
-        avatar: `https://picsum.photos/seed/${firebaseUser.uid}/300/300`,
-      };
-      
-      onLogin(appUser);
+      const response = await fetch('http://localhost:5001/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
+      }
+
+      onLogin(data);
     } catch (err: any) {
       console.error(err);
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-        setError('Incorrect email or password.');
-      } else if (err.code === 'auth/invalid-api-key') {
-        setError('Firebase not configured correctly. Check your API keys in firebase.ts');
-      } else {
-        setError('Login failed. Please try again.');
-      }
+      setError(err.message || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -53,7 +46,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           <div className="size-20 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-primary/20">
             <span className="material-symbols-outlined text-white text-4xl">business_center</span>
           </div>
-          <h1 className="text-3xl font-black text-slate-900 dark:text-white mb-2">Lead Dash</h1>
+          <h1 className="text-3xl font-black text-slate-900 dark:text-white mb-2"></h1>
           <p className="text-slate-500 dark:text-slate-400 font-medium">Cloud-powered workspace management.</p>
         </div>
 
@@ -69,7 +62,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
             <div className="relative">
               <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">mail</span>
-              <input 
+              <input
                 type="email"
                 required
                 value={email}
@@ -84,7 +77,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Password</label>
             <div className="relative">
               <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">lock</span>
-              <input 
+              <input
                 type="password"
                 required
                 value={password}
@@ -95,7 +88,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             </div>
           </div>
 
-          <button 
+          <button
             type="submit"
             disabled={loading}
             className="w-full h-14 bg-primary text-white font-black text-lg rounded-2xl shadow-xl shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2"
